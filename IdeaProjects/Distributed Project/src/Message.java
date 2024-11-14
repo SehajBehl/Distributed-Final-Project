@@ -8,7 +8,8 @@ enum MessageType {
     DOCUMENT_CONTENT,
     UPDATE_CONTENT,
     UPDATE_USERS,
-    CURSOR_POSITION
+    CURSOR_POSITION,
+    REMOVE_USER
 }
 
 class Message implements Serializable {
