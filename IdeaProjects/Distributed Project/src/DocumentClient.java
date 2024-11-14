@@ -11,10 +11,13 @@ public class DocumentClient extends JFrame {
     private DefaultListModel<String> usersListModel;
     private JButton connectButton;
     private JButton openDocButton;
+    private JButton saveButton;
+    private JButton loadButton;
     private ObjectOutputStream output;
     private ObjectInputStream input;
     private Socket socket;
     private String username;
+    private String currentDocId = null;
     private boolean isConnected = false;
     private boolean isUpdatingFromServer = false;
     private Thread messageListenerThread;
@@ -24,60 +27,105 @@ public class DocumentClient extends JFrame {
         setupUI();
     }
 
-    private void setupUI() {
-        setTitle("Collaborative Document Editor");
-        setSize(800, 600);
-        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+private void setupUI() {
+    setTitle("Collaborative Document Editor");
+    setSize(800, 600);
+    setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
-        documentArea = new JTextArea();
-        documentArea.setEnabled(false);
-        usersListModel = new DefaultListModel<>();
-        usersList = new JList<>(usersListModel);
-        connectButton = new JButton("Connect");
-        openDocButton = new JButton("Open Document");
-        openDocButton.setEnabled(false);
+    documentArea = new JTextArea();
+    documentArea.setEnabled(false);
+    usersListModel = new DefaultListModel<>();
+    usersList = new JList<>(usersListModel);
+    connectButton = new JButton("Connect");
+    openDocButton = new JButton("Create/Open Document");
+    openDocButton.setEnabled(false);
+    saveButton = new JButton("Save Document");
+    saveButton.setEnabled(false);
+    loadButton = new JButton("Load Document");
 
-        JPanel mainPanel = new JPanel(new BorderLayout());
-        mainPanel.add(new JScrollPane(documentArea), BorderLayout.CENTER);
+    JPanel mainPanel = new JPanel(new BorderLayout());
+    mainPanel.add(new JScrollPane(documentArea), BorderLayout.CENTER);
 
-        JPanel rightPanel = new JPanel(new BorderLayout());
-        rightPanel.add(new JLabel("Active Users"), BorderLayout.NORTH);
-        rightPanel.add(new JScrollPane(usersList), BorderLayout.CENTER);
-        rightPanel.setPreferredSize(new Dimension(200, getHeight()));
+    JPanel rightPanel = new JPanel(new BorderLayout());
+    rightPanel.add(new JLabel("Active Users"), BorderLayout.NORTH);
+    rightPanel.add(new JScrollPane(usersList), BorderLayout.CENTER);
+    rightPanel.setPreferredSize(new Dimension(200, getHeight()));
 
-        JPanel buttonPanel = new JPanel();
-        buttonPanel.add(connectButton);
-        buttonPanel.add(openDocButton);
+    JPanel buttonPanel = new JPanel();
+    buttonPanel.add(connectButton);
+    buttonPanel.add(openDocButton);
+    buttonPanel.add(saveButton);
+    buttonPanel.add(loadButton);
 
-        mainPanel.add(rightPanel, BorderLayout.EAST);
-        mainPanel.add(buttonPanel, BorderLayout.NORTH);
+    mainPanel.add(rightPanel, BorderLayout.EAST);
+    mainPanel.add(buttonPanel, BorderLayout.NORTH);
 
-        add(mainPanel);
+    add(mainPanel);
 
-        connectButton.addActionListener(e -> handleConnect());
-        openDocButton.addActionListener(e -> handleOpenDocument());
+    connectButton.addActionListener(e -> handleConnect());
+    openDocButton.addActionListener(e -> handleOpenDocument());
+    saveButton.addActionListener(e -> handleSaveDocument());
+    loadButton.addActionListener(e -> handleLoadDocument());
 
-        documentArea.getDocument().addDocumentListener(new DocumentListener() {
-            private void handleChange() {
-                if (!isUpdatingFromServer && isConnected) {
-                    try {
-                        String content = documentArea.getText();
-                        sendMessage(new Message(MessageType.UPDATE_CONTENT, username, content));
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                        handleConnectionError();
-                    }
+    documentArea.getDocument().addDocumentListener(new DocumentListener() {
+        private void handleChange() {
+            if (!isUpdatingFromServer && isConnected) {
+                try {
+                    String content = documentArea.getText();
+                    sendMessage(new Message(MessageType.UPDATE_CONTENT, username, content));
+                } catch (IOException e) {
+                    e.printStackTrace();
+                    handleConnectionError();
                 }
             }
+        }
 
-            @Override
-            public void insertUpdate(DocumentEvent e) { handleChange(); }
-            @Override
-            public void removeUpdate(DocumentEvent e) { handleChange(); }
-            @Override
-            public void changedUpdate(DocumentEvent e) { handleChange(); }
-        });
+        @Override
+        public void insertUpdate(DocumentEvent e) { handleChange(); }
+        @Override
+        public void removeUpdate(DocumentEvent e) { handleChange(); }
+        @Override
+        public void changedUpdate(DocumentEvent e) { handleChange(); }
+    });
+}
+
+private void handleSaveDocument() {
+    if (!documentArea.getText().isEmpty()) {
+        JFileChooser fileChooser = new JFileChooser();
+        if (fileChooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
+            File file = fileChooser.getSelectedFile();
+            try (FileWriter writer = new FileWriter(file)) {
+                writer.write(documentArea.getText());
+                JOptionPane.showMessageDialog(this, "Document saved successfully.");
+            } catch (IOException e) {
+                e.printStackTrace();
+                JOptionPane.showMessageDialog(this, "Error saving document.");
+            }
+        }
     }
+}
+
+private void handleLoadDocument() {
+    JFileChooser fileChooser = new JFileChooser();
+    if (fileChooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+        File file = fileChooser.getSelectedFile();
+        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+            StringBuilder content = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                content.append(line).append("\n");
+            }
+            isUpdatingFromServer = true; // Temporarily mark as updating to avoid sending updates to the server
+            documentArea.setText(content.toString());
+            isUpdatingFromServer = false; // Reset this flag to allow future edits to be sent
+            documentArea.setEnabled(true); // Ensure the text area is enabled for editing
+            JOptionPane.showMessageDialog(this, "Document loaded successfully.");
+        } catch (IOException e) {
+            e.printStackTrace();
+            JOptionPane.showMessageDialog(this, "Error loading document.");
+        }
+    }
+}
 
     private void setupNetworking() throws IOException {
         socket = new Socket("localhost", 5000);
@@ -125,17 +173,23 @@ public class DocumentClient extends JFrame {
     }
 
     private void handleOpenDocument() {
-        String docId = JOptionPane.showInputDialog("Enter document ID:");
-        if (docId != null && !docId.trim().isEmpty()) {
-            try {
-                sendMessage(new Message(MessageType.OPEN_DOCUMENT, username, docId));
-                documentArea.setEnabled(true);
-            } catch (IOException e) {
-                e.printStackTrace();
-                handleConnectionError();
+    String docId = JOptionPane.showInputDialog("Enter document ID:");
+    if (docId != null && !docId.trim().isEmpty()) {
+        try {
+            // Remove user from the current document's active user list if switching to a new document
+            if (currentDocId != null && !currentDocId.equals(docId)) {
+                sendMessage(new Message(MessageType.REMOVE_USER, username, currentDocId));
             }
+            sendMessage(new Message(MessageType.OPEN_DOCUMENT, username, docId));
+            currentDocId = docId;
+            documentArea.setEnabled(true);
+            saveButton.setEnabled(true);
+        } catch (IOException e) {
+            e.printStackTrace();
+            handleConnectionError();
         }
     }
+}
 
     private void sendMessage(Message message) throws IOException {
         synchronized (output) {

@@ -149,26 +149,34 @@ class ClientHandler implements Runnable {
     }
 
     private void handleMessage(Message message) throws IOException {
-        switch (message.getType()) {
-            case CONNECT:
-                username = message.getSender();
-                sendMessage(new Message(MessageType.CONNECT_ACK, "Server", "Connected successfully"));
-                break;
+            switch (message.getType()) {
+        case CONNECT:
+            username = message.getSender();
+            sendMessage(new Message(MessageType.CONNECT_ACK, "Server", "Connected successfully"));
+            break;
 
-            case OPEN_DOCUMENT:
-                currentDocId = message.getContent();
-                currentDoc = server.getDocument(currentDocId);
-                currentDoc.addUser(username, this);
-                sendMessage(new Message(MessageType.DOCUMENT_CONTENT, "Server", currentDoc.getContent()));
-                break;
+        case OPEN_DOCUMENT:
+            currentDocId = message.getContent();
+            currentDoc = server.getDocument(currentDocId);
+            currentDoc.addUser(username, this);
+            sendMessage(new Message(MessageType.DOCUMENT_CONTENT, "Server", currentDoc.getContent()));
+            break;
 
-            case UPDATE_CONTENT:
-                if (currentDoc != null) {
-                    currentDoc.updateContent(message.getContent());
-                    currentDoc.broadcastUpdate(message, this);
-                }
-                break;
-        }
+        case UPDATE_CONTENT:
+            if (currentDoc != null) {
+                currentDoc.updateContent(message.getContent());
+                currentDoc.broadcastUpdate(message, this);
+            }
+            break;
+
+        case REMOVE_USER:
+              if (currentDoc != null) {
+        currentDoc.removeUser(username, this);
+        currentDocId = null;
+        currentDoc = null;
+    }
+    break;
+    }   
     }
 
     private void handleDisconnect() {
