@@ -25,16 +25,20 @@ class Document {
     public void updateContent(String newContent) {
         lock.lock();
         try {
-            // Save the current content as a version before updating
-            if (versionHistory.size() == MAX_VERSIONS) {
-                versionHistory.removeFirst(); // Remove the oldest version
+            // Only save the current content if it differs from the new content
+            if (!content.toString().isEmpty() && !content.toString().equals(newContent)) {
+                if (versionHistory.size() == MAX_VERSIONS) {
+                    versionHistory.removeFirst();
+                }
+                versionHistory.add(content.toString());
             }
-            versionHistory.add(content.toString()); // Add the current content as a new version
-            content = new StringBuilder(newContent);
+            content = new StringBuilder(newContent); // Update the content
         } finally {
             lock.unlock();
         }
     }
+    
+    
 
     public String getContent() {
         lock.lock();
@@ -94,7 +98,13 @@ class Document {
         lock.lock();
         try {
             if (versionIndex >= 0 && versionIndex < versionHistory.size()) {
-                content = new StringBuilder(versionHistory.get(versionIndex)); // Rollback to the specified version
+                String versionContent= versionHistory.get(versionIndex);
+                if(versionContent != null) {
+                    content = new StringBuilder(versionContent); // Rollback to the specified version
+                }
+                
+            } else {
+                throw new IllegalArgumentException("Invalid version index");
             }
         } finally {
             lock.unlock();
